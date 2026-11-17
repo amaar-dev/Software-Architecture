@@ -42,3 +42,17 @@ NFR-02	Scalability: The architecture should allow future expansion to additional
 NFR-03	Data integrity: The system should maintain accurate collection status and prevent inconsistent transaction records.
 NFR-04	Privacy: The system should minimise the collection and retention of sensitive personal information.
 NFR-05	Traceability: Significant collection operations should be attributable and auditable.
+# Assumptions
+ID	Assumption
+A-01	The system operates at one depot location.
+A-02	Customers interact with depot workers rather than directly with the software.
+A-03	Parcel and customer records are available in the expected input format.
+A-04	It is assumed that an authorised depot worker records each parcel's arrival and relevant details before the parcel is made available for collection. These records are subsequently loaded into DepotManager.
+A-05	Parcel records contain accurate information, including weight, dimensions, arrival date or days in depot, and any information needed to calculate applicable fees or discounts.
+# Constraints
+ID	Constraint
+C-01	The implementation must use Java.
+C-02	The graphical interface must use Java Swing, not JavaFX.
+C-03	The system must follow the required three-tier architecture.
+C-04	The implementation must preserve the provided class names, packages, and public method signatures.
+C-05	The implementation cannot use Maven, Gradle, lambdas, method references, or Java Streams.
