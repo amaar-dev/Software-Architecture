@@ -1,0 +1,615 @@
+DEPOTMANAGER SYSTEM STRUCTURE REFERENCE
+Maximum Marks Working Baseline
+Last consolidated: 18 November 2026
+
+PURPOSE OF THIS FILE
+
+This is the authoritative working reference for Part 1 design and Part 2 implementation.
+Use it to check every diagram, explanation, class, method, tier allocation and implementation decision.
+
+Source priority when information conflicts:
+1. The official Part 1 and Part 2 briefs.
+2. The supplied Part 2 starter classes, Javadocs and unmodified tests.
+3. Part 2 Appendix A.
+4. The final approved diagrams and written explanations.
+5. Earlier chat discussion and proposed ideas.
+
+Do not add features merely because they were discussed in an earlier chat. A feature is in scope only
+when it is mandatory below or is explicitly identified as the one approved optional use case.
+
+
+1. SYSTEM PURPOSE
+
+DepotManager simulates customers collecting parcels from a depot. Customers wait in a first-in-first-out
+queue. A depot worker processes one customer at a time, finds the requested parcel, calculates its fee,
+releases it when successful, records significant events and produces an end-of-day report.
+
+The system must remain consistent across:
+- the Part 1 use-case model;
+- the Part 1 class diagram;
+- the Part 1 three-tier architecture model;
+- the Part 2 fixed Java implementation;
+- the Part 2 reflective comparison.
+
+
+2. SYSTEM BOUNDARY AND ACTORS
+
+System subject: DepotManager
+
+Mandatory external actors:
+
+Customer
+- Joins the collection queue.
+- States the parcel ID they wish to collect.
+- Part 1 explicitly requires Customer as an actor.
+- Part 2 does not provide a customer-facing GUI. It loads customers from a file and exposes controller
+  and queue operations. This is an allowed Part 1 to Part 2 difference to discuss in the reflection.
+
+Depot Worker
+- Processes the next customer.
+- Looks up parcels.
+- calculates collection fees.
+- Releases parcels.
+- Adds new parcels.
+- Views outstanding parcels and processing details.
+- Generates the end-of-day report.
+
+Record Event to Log is an internal system responsibility. No actor initiates it directly.
+
+
+3. MANDATORY PART 1 USE CASES
+
+UC-01 Join Collection Queue
+Actor: Customer
+Outcome: Customer is added to the back of the FIFO queue with their requested parcel ID.
+Part 2 mapping: DepotController.addCustomerToQueue(Customer), CustomerQueue.enqueue(Customer).
+Logging: Includes Record Event to Log.
+
+UC-02 Process Next Customer
+Actor: Depot Worker
+Outcome: The customer at the front of the queue is processed.
+Part 2 mapping: DepotController.processNextCustomer(), Worker.processNextCustomer(...).
+Logging: Includes Record Event to Log.
+Workflow note: Look Up Parcel and Calculate Collection Fee occur in the normal processing flow but are
+not shown as <<include>> relationships because exception paths can finish before fee calculation.
+
+UC-03 Look Up Parcel
+Actor: Depot Worker
+Outcome: The requested parcel is found by its unique ID.
+Part 2 mapping: ParcelMap.getParcel(String).
+Exception: Handle Parcel Not Found extends this use case.
+
+UC-04 Calculate Collection Fee
+Actor: Depot Worker
+Outcome: The collection fee is calculated for the located parcel.
+Part 2 mapping: Worker.calculateFee(Parcel).
+
+UC-05 Release Parcel
+Actor: Depot Worker
+Outcome: The successful parcel is marked collected and no longer appears as outstanding.
+Part 2 mapping: Parcel.setCollected(true), coordinated by Worker.processNextCustomer(...).
+Logging: Includes Record Event to Log.
+
+UC-06 Add New Parcel
+Actor: Depot Worker
+Outcome: A newly arrived parcel is added to depot records.
+Part 2 mapping: DepotController.addParcel(Parcel), ParcelMap.addParcel(Parcel).
+Logging: Includes Record Event to Log.
+Part 2 difference: The fixed minimum GUI has no required Add Parcel button, but the controller operation exists.
+
+UC-07 View Parcels Awaiting Collection
+Actor: Depot Worker
+Outcome: The uncollected parcels are displayed, oldest waiting first in Part 2.
+Part 2 mapping: ParcelListPanel.refresh(ParcelMap),
+ParcelMap.getUncollectedSortedByDaysInDepot().
+
+UC-08 View Current Processing Details
+Actor: Depot Worker
+Outcome: Customer, parcel and fee or an error result are displayed.
+Part 2 mapping: ProcessingPanel.showResult(ProcessingResult).
+Part 2 difference: The fixed GUI displays the most recent processing result.
+
+UC-09 Generate End-of-Day Report
+Actor: Depot Worker
+Outcome: A written report contains collected parcels and fees, uncollected parcels, summary counts
+and totals.
+Part 2 mapping: DepotController.endDay(...), ReportWriter.writeReport(...).
+Logging/output: Includes Record Event to Log and writes the shared log file.
+
+UC-10 Record Event to Log
+Actor: None; internal included responsibility.
+Outcome: Significant events and errors are recorded in one shared event log.
+Part 2 mapping: Log.getInstance(), Log.logEvent(String), Log.writeToFile(String).
+
+
+4. APPROVED OPTIONAL OR EXCEPTIONAL USE CASE
+
+UC-11 Handle Parcel Not Found
+Type: Approved additional exceptional use case.
+Condition: Requested parcel ID cannot be found.
+Relationship: Handle Parcel Not Found --<<extend>>--> Look Up Parcel.
+Arrow direction: From Handle Parcel Not Found to Look Up Parcel.
+Outcome: Collection is not completed, parcel state is unchanged, a failure result is displayed and the
+error is logged.
+Part 2 mapping: Worker.processNextCustomer(...) returns ProcessingResult.failure(...); Log records it.
+Logging: Includes Record Event to Log.
+
+Only this additional use case is currently approved for the submitted design.
+
+
+5. FEATURES NOT IN THE CURRENT SUBMISSION SCOPE
+
+The following were discussed but are not mandatory in either brief and are not part of the final design:
+- End-of-month reporting.
+- Custom date-range reporting.
+- Collection receipts.
+- National identity card storage or identity verification.
+- Delivery operations.
+- A separate FeeCalculator class.
+- A separate EndOfDayReport class.
+- A separate DepotManager domain class.
+
+These may be mentioned only as possible future enhancements. They must not replace mandatory features
+or create inconsistency with the fixed Part 2 structure.
+
+
+6. BUSINESS RULES CONFIRMED BY PART 2
+
+Parcel identity
+- Parcel IDs match C or X followed by two or three digits.
+- Parcel IDs are unique in ParcelMap.
+
+Parcel data
+- Parcel stores ID, weight, length, width, height, days in depot and collected status.
+- Parcel validates constructor data.
+- Invalid parcel data produces InvalidParcelDataException.
+- Volume = length x width x height.
+
+Customer data
+- Customer stores queue sequence number, name and requested parcel ID.
+- Customer validates its constructor arguments.
+
+Queue processing
+- Customers are processed in strict first-in-first-out order.
+- An empty queue returns a graceful failure result; it must not crash the GUI.
+
+Fee formula
+- fee = (weight x 0.5) + (volume x 0.1) + (daysInDepot x 0.2)
+- If the parcel ID starts with X, apply a 10 percent discount.
+- Round the result to two decimal places.
+
+Collection success
+- The requested parcel exists.
+- The parcel has not already been collected.
+- The fee is calculated.
+- The parcel is marked collected.
+- The event is logged.
+- A successful ProcessingResult is returned.
+
+Collection failure
+- Queue is empty; or
+- requested parcel is not found; or
+- parcel has already been collected.
+- Failure must be displayed gracefully, with no visible exception to the user.
+- Failure is represented by ProcessingResult.failure(...).
+
+Supplied data targets
+- 15 parcels and 15 customers are loaded.
+- Customer 13 requests missing parcel C999.
+- Customer 15 requests C101 after it has already been collected.
+- C307 and C99 remain uncollected.
+- Final expected result: 13 collected, 2 uncollected and total fees of £128.80.
+
+
+7. AUTHORITATIVE CLASS STRUCTURE
+
+DATA AND DOMAIN RESPONSIBILITIES
+
+Parcel
+- Fields: id, weight, length, width, height, daysInDepot, collected.
+- Validates parcel data, calculates volume and tracks collected status.
+
+Customer
+- Fields: sequenceNumber, name, parcelId.
+- Represents one customer and their requested parcel.
+
+ParcelMap
+- Container for all Parcel objects.
+- Structure: LinkedHashMap<String, Parcel>.
+- Reason: efficient lookup by unique parcel ID while retaining insertion order.
+
+CustomerQueue
+- Container for waiting Customer objects.
+- Structure: Queue<Customer> backed by LinkedList.
+- Reason: naturally enforces first-in-first-out processing.
+
+Log
+- Singleton shared event log.
+- Exactly one lazily created instance.
+- Private constructor.
+- Synchronized getInstance().
+- Stores events in a shared StringBuffer and writes them using UTF-8.
+
+ProcessingResult
+- Immutable value object describing success or failure.
+- Contains message, optional customer, optional parcel and fee.
+- Part 2 places this in the Data and Domain tier.
+
+InvalidParcelDataException
+- Checked exception for invalid Parcel construction.
+- Exception is a Java library superclass, not a DepotManager application class.
+
+BUSINESS LOGIC RESPONSIBILITIES
+
+Worker
+- Calculates fees.
+- Processes the next queued customer against ParcelMap.
+- Coordinates lookup, validation, parcel release, logging and ProcessingResult creation.
+
+DepotController
+- MVC Controller.
+- Mediates between Views and the model.
+- Owns references to ParcelMap, CustomerQueue and Worker.
+- Adds parcels and customers, processes customers, loads files and ends the day.
+- Notifies registered listeners after model changes.
+- Must never import or reference a class from the view package.
+
+DepotController.DepotListener
+- Nested Observer callback interface.
+- Declares onDepotUpdated().
+- Implemented by DepotManagerFrame.
+- Allows the controller to notify Views without depending on concrete GUI classes.
+
+PRESENTATION RESPONSIBILITIES
+
+DepotManagerFrame
+- Main Swing window.
+- Implements DepotController.DepotListener.
+- Registers with the controller and refreshes child panels in onDepotUpdated().
+
+ParcelListPanel
+- Displays parcels awaiting collection.
+
+CustomerQueuePanel
+- Displays customers in queue order.
+
+ProcessingPanel
+- Displays the most recent ProcessingResult.
+
+ControlPanel
+- Contains at minimum Process Next Customer and End Day controls.
+- Sends actions to DepotController; it does not change model objects directly.
+
+DepotManagerApp
+- Application entry point.
+- Creates and connects the model, controller and view.
+- Loads the initial parcel and customer files.
+
+DATA ACCESS AND OUTPUT RESPONSIBILITIES
+
+DataLoader
+- Utility responsible for reading parcel and customer comma-separated text files.
+
+ReportWriter
+- Utility responsible for writing the complete end-of-day report.
+
+
+8. REQUIRED CLASS RELATIONSHIPS
+
+Container relationships
+- ParcelMap 1 *-- 0..* Parcel (composition; role: parcels).
+- CustomerQueue 1 o-- 0..* Customer (aggregation; role: waitingCustomers).
+
+Controller relationships
+- DepotController 1 -- 1 ParcelMap.
+- DepotController 1 -- 1 CustomerQueue.
+- DepotController 1 -- 1 Worker.
+- DepotController 1 -- 0..* DepotController.DepotListener.
+
+Result relationships
+- One ProcessingResult refers to 0..1 Customer.
+- One ProcessingResult refers to 0..1 Parcel.
+- Worker creates ProcessingResult objects.
+
+View relationships
+- DepotManagerFrame implements DepotController.DepotListener.
+- DepotManagerFrame owns ParcelListPanel, CustomerQueuePanel, ProcessingPanel and ControlPanel.
+- DepotManagerFrame and ControlPanel use DepotController.
+- ControlPanel uses ProcessingPanel to show the result of processing.
+
+Utility dependencies
+- DepotController uses DataLoader, ReportWriter and Log.
+- Worker uses CustomerQueue, ParcelMap, ProcessingResult and Log.
+
+
+9. AUTHORITATIVE THREE-TIER ALLOCATION
+
+PRESENTATION TIER
+- DepotManagerApp
+- DepotManagerFrame
+- ControlPanel
+- ProcessingPanel
+- ParcelListPanel
+- CustomerQueuePanel
+
+BUSINESS LOGIC TIER
+- Worker
+- DepotController
+- DepotController.DepotListener
+
+DATA TIER
+- Parcel
+- Customer
+- ParcelMap
+- CustomerQueue
+- Log
+- ProcessingResult
+- InvalidParcelDataException
+- DataLoader
+- ReportWriter
+
+External Java library class
+- Exception is outside the application tiers. Prefer removing it from the submitted application class
+  diagram, or label it explicitly as an external Java library class.
+
+Required dependency direction
+- Presentation Tier -> Business Logic Tier -> Data Tier.
+- Presentation initiates actions through DepotController.
+- Business Logic applies rules and uses domain/data services.
+- Data never depends on Presentation.
+- DepotController never depends on concrete View classes.
+- Observer callbacks depend on the business-owned DepotListener interface, not a View type.
+
+MVC mapping
+- View: DepotManagerFrame and its Swing panels.
+- Controller: DepotController.
+- Model: Parcel, Customer, ParcelMap, CustomerQueue, Worker, ProcessingResult and Log, supported by
+  DataLoader and ReportWriter.
+- Observer: DepotController.DepotListener connects Controller notifications to View refreshes without an
+  upward concrete dependency.
+
+
+10. PART 1 DELIVERABLE AND MAXIMUM-MARK GATES
+
+USE-CASE MODEL - 10 MARKS
+- Labelled DepotManager boundary.
+- Customer and Depot Worker outside the boundary.
+- All ten mandatory use cases inside the boundary.
+- UC-11 Handle Parcel Not Found included as the approved additional use case.
+- Actor associations only to use cases they initiate.
+- Record Event to Log has no actor association.
+- State-changing/error use cases include Record Event to Log.
+- At least one correct <<include>> and one correct <<extend>>.
+- Include arrows point to the included use case.
+- Extend arrow points from Handle Parcel Not Found to Look Up Parcel.
+- Textual use-case descriptions must match the diagram and include main, alternative and exception flows.
+
+CLASS DIAGRAM - 15 MARKS
+- Every required application class is present in three-compartment UML notation.
+- Attributes are private and typed.
+- Methods show visibility, parameters and return types.
+- Methods collectively realise every use case.
+- Associations, aggregation, composition and realisation are correct.
+- Multiplicities are shown at both ends where relevant.
+- ParcelMap and CustomerQueue are identified as containers.
+- LinkedHashMap and Queue/LinkedList choices are justified.
+- Diagram remains readable at final PDF size.
+- Use DepotController.DepotListener for exact Part 2 consistency.
+- Treat Exception as external rather than an application class.
+
+THREE-TIER ARCHITECTURE - 25 MARKS
+- Use labelled UML packages or components, not informal unlabelled boxes.
+- Show exactly three tiers: Presentation, Business Logic and Data.
+- Every application class from the final class diagram appears exactly once.
+- Use the allocation in Section 9.
+- Dependencies flow downward only.
+- No Data class depends on Presentation.
+- No concrete View class is referenced by DepotController.
+- Include a 150-250 word explanation.
+- Explanation names the actual classes, not generic tier definitions.
+- Explanation maps the design specifically to MVC and Observer.
+- Explanation states how model changes refresh the View without an upward concrete dependency.
+
+PART 1 SUBMISSION
+- Submit one PDF.
+- Diagrams must be readable in the PDF.
+- Required filename: student_number.surname_part1.pdf.
+- Final PDF should contain the use-case diagram, textual use-case descriptions, class diagram and
+  justification, three-tier model and 150-250 word explanation.
+
+
+11. PART 2 IMPLEMENTATION CONTRACT
+
+Technical constraints
+- Java Development Kit 17 or later.
+- Plain Java project.
+- Swing only; no JavaFX.
+- No Maven, Gradle, Spring Boot or other framework/build tool.
+- No lambda expressions.
+- No method references.
+- No Stream API.
+- Do not change package names, class names, public method names, parameter types/order or return types.
+- Do not change supplied tests.
+- Private fields and private helper methods may be added.
+
+Testing
+- 111 supplied JUnit 5 tests.
+- Target: 111/111 passing.
+- Target model/controller/util coverage: near 100 percent.
+- Recommended implementation order: Parcel, Customer, ParcelMap, CustomerQueue, Log,
+  ProcessingResult, Worker, DataLoader, ReportWriter, DepotController, then Views and DepotManagerApp.
+
+GUI maximum-mark target
+- Starts cleanly.
+- Loads all 15 parcels and 15 customers.
+- Shows parcels, queue and processing result.
+- Processes customers in FIFO order.
+- Displays customer name, parcel ID and correct fee.
+- Handles C999, already-collected C101 and empty queue gracefully.
+- Removes collected parcels from the outstanding display immediately.
+- End Day confirms success and writes both report and timestamped log.
+- Report contains 15 parcels, 13 collected, 2 uncollected and £128.80 total fees.
+- Pound sign is encoded correctly.
+- Layout is clear and responsive.
+
+Pattern maximum-mark target
+- Log constructor remains private.
+- Log.getInstance() is synchronized and lazily initialised.
+- Worker and DepotController use the same Log instance.
+- DepotController has no reference to the view package.
+- DepotManagerFrame implements and registers as DepotListener.
+- onDepotUpdated() refreshes the display after model changes.
+- Views do not mutate the model directly.
+
+Git maximum-mark target
+- Initialise git before implementation.
+- Produce 10-15 meaningful commits.
+- Spread commits across the implementation period.
+- Prefer one tested class or closely related increment per commit.
+- Use specific messages stating what was implemented and which tests pass.
+
+Reflective report maximum-mark target
+- 200-300 words.
+- Map the student's actual Part 1 use cases/classes to Part 2 classes/methods.
+- Explain differences honestly and specifically.
+- Evaluate whether the fixed structure improves separation of responsibilities.
+- Discuss data structures, MVC/Observer, testing and git process.
+- Avoid generic description.
+
+Part 2 submission
+- Submit completed src folder as a zip.
+- Include git-log screenshot showing 10-15 commits.
+- Include the 200-300 word reflective report.
+- Do not include compiled class files, IDE project files or supplied tests.
+- Required filename: student_number.surname_part2.zip.
+
+
+12. TRACEABILITY MATRIX
+
+Requirement / use case                 Responsible classes and methods
+Join Collection Queue                  DepotController.addCustomerToQueue; CustomerQueue.enqueue
+Process Next Customer                  DepotController.processNextCustomer; Worker.processNextCustomer
+Look Up Parcel                         ParcelMap.getParcel
+Calculate Collection Fee               Worker.calculateFee
+Release Parcel                         Parcel.setCollected; Worker.processNextCustomer
+Add New Parcel                         DepotController.addParcel; ParcelMap.addParcel
+View Parcels Awaiting Collection       ParcelListPanel.refresh; ParcelMap.getUncollectedSortedByDaysInDepot
+View Current Processing Details        ProcessingPanel.showResult; ProcessingResult
+Generate End-of-Day Report             DepotController.endDay; ReportWriter.writeReport
+Record Event to Log                    Log.getInstance; Log.logEvent; Log.writeToFile
+Handle Parcel Not Found                Worker.processNextCustomer; ProcessingResult.failure; Log.logEvent
+Load initial parcel/customer data      DepotManagerApp; DepotController load methods; DataLoader
+Refresh GUI after model change         DepotController.notifyListeners; DepotManagerFrame.onDepotUpdated
+
+
+13. FINAL PART 1 BASELINE AND PART 2 HANDOFF
+
+PART 1 STATUS: COMPLETE AND SUBMITTED BASELINE
+
+Final artifact
+- File: 24036698.ammar_part1.pdf
+- Verified on: 20 November 2026
+- Format: one 20-page A4 landscape PDF.
+- Required filename pattern is satisfied.
+- Contains the use-case model and all eleven textual descriptions, class design and justification,
+  three-tier architecture model, and the 202-word MVC/Observer explanation.
+- Final visual verification found no blank pages, missing sections, clipped prose or broken diagrams.
+- No separate bibliography is required by the official Part 1 brief.
+
+Final content result
+- Use-case model: all ten mandatory use cases plus Handle Parcel Not Found, correct actors, logging
+  includes, exception extend behaviour, complete flows, correct fee rules and oldest-first display.
+- Class design: all required application classes, typed private attributes, typed operations,
+  multiplicities, container relationships, data-structure justifications and required dependencies.
+- Worker explicitly depends on CustomerQueue, ParcelMap, ProcessingResult and Log.
+- Architecture: every application class appears once in its required tier; dependencies remain
+  downward; MVC, Observer and Singleton responsibilities are explained using the actual classes.
+- Estimated content standard: approximately 47-49/50, subject to tutor judgement.
+- Accepted submitted notation: the use-case diagram and relationship lines use
+  {error:parcel not found}, while the detailed UC-11 flow explains the same condition as
+  [requested parcel ID is not found]. Behaviour and arrow direction are unambiguous. This is a
+  recorded submitted-state detail, not an outstanding completion task.
+
+Frozen Part 1 decisions
+- System subject: DepotManager.
+- Actors: Customer and Depot Worker.
+- Approved use cases: UC-01 through UC-11 exactly as defined in Sections 3 and 4.
+- Approved application classes and tier allocations: exactly those in Sections 7 and 9.
+- ParcelMap owns Parcel objects and uses LinkedHashMap<String, Parcel>.
+- CustomerQueue aggregates waiting customers and uses Queue<Customer> backed by LinkedList.
+- Worker owns fee calculation and processing rules.
+- DepotController is the MVC Controller and owns ParcelMap, CustomerQueue and Worker.
+- Log is the single shared lazy Singleton.
+- DepotController.DepotListener is the business-owned Observer interface.
+- DepotManagerFrame implements and registers the listener and refreshes its panels after notification.
+- DataLoader owns file input; ReportWriter owns end-of-day report output.
+- ProcessingResult carries success or graceful failure outcomes.
+- InvalidParcelDataException is the checked parcel-validation exception.
+
+Frozen use-case-to-code mapping
+- Join Collection Queue -> DepotController.addCustomerToQueue; CustomerQueue.enqueue.
+- Process Next Customer -> DepotController.processNextCustomer; Worker.processNextCustomer.
+- Look Up Parcel -> ParcelMap.getParcel.
+- Calculate Collection Fee -> Worker.calculateFee.
+- Release Parcel -> Parcel.setCollected(true), coordinated by Worker.processNextCustomer.
+- Add New Parcel -> DepotController.addParcel; ParcelMap.addParcel.
+- View Parcels Awaiting Collection -> ParcelListPanel.refresh;
+  ParcelMap.getUncollectedSortedByDaysInDepot, oldest first.
+- View Current Processing Details -> ProcessingPanel.showResult; ProcessingResult.
+- Generate End-of-Day Report -> DepotController.endDay; ReportWriter.writeReport.
+- Record Event to Log -> Log.getInstance; Log.logEvent; Log.writeToFile.
+- Handle Parcel Not Found -> Worker.processNextCustomer; ProcessingResult.failure; Log.logEvent.
+- Load initial data -> DepotManagerApp; DepotController load methods; DataLoader.
+- Refresh after model change -> DepotController.notifyListeners;
+  DepotManagerFrame.onDepotUpdated.
+
+Part 2 implementation contract
+- Use Java 17 or later, plain Java and Swing only.
+- Do not use Maven, Gradle, Spring Boot, JavaFX or another framework/build tool.
+- Do not use lambda expressions, method references or the Stream API.
+- Preserve supplied package names, class names, public method names, parameter order/types and
+  return types. Do not modify supplied tests.
+- Private fields and private helper methods may be added.
+- Use the exact fee formula in Section 6, apply the X-prefix 10 percent discount and round to two
+  decimal places.
+- Handle missing parcels, already-collected parcels and an empty queue using
+  ProcessingResult.failure with no visible exception to the user.
+- Log must have a private constructor and synchronized lazy getInstance(). Worker and DepotController
+  must use the same Log instance.
+- DepotController must not import or reference a concrete view class.
+- Views must not mutate model objects directly.
+- DepotManagerFrame must implement and register DepotController.DepotListener.
+- Preserve UTF-8 file output and the pound sign in reports.
+- Target all 111 supplied JUnit 5 tests passing with near-100 percent model/controller/util coverage.
+
+Part 2 supplied-data acceptance target
+- Load 15 parcels and 15 customers.
+- Customer 13 requests missing parcel C999.
+- Customer 15 requests C101 after it has already been collected.
+- C307 and C99 remain uncollected.
+- Expected final result: 13 collected, 2 uncollected and GBP 128.80 total fees.
+
+Part 2 process and submission reminders
+- Initialise git before implementation.
+- Produce 10-15 meaningful commits spread across the implementation period.
+- Implement in the recommended order recorded in Section 11.
+- Prepare the required 200-300 word reflective report.
+- In the reflection, explicitly discuss:
+  - Customer is a direct Part 1 actor, while Part 2 loads customers from a file.
+  - Add New Parcel exists in the controller although the minimum fixed GUI has no Add Parcel button.
+  - How LinkedHashMap and Queue/LinkedList support the design.
+  - How MVC, Observer and Singleton improve separation of responsibilities.
+  - Testing results and the git process.
+- Submit the completed src folder as the required Part 2 zip with the git-log screenshot and
+  reflective report.
+- Do not include compiled class files, IDE project files or supplied tests.
+- Required Part 2 filename pattern: student_number.surname_part2.zip.
+
+Change-control rule for Part 2
+Before changing an actor, use case, class, method, tier or relationship:
+1. Check the official Part 2 brief and supplied public contract.
+2. Check Sections 7, 8, 9 and 12 of this reference.
+3. Preserve compatibility with the frozen Part 1 baseline.
+4. Record any unavoidable difference for the reflective report.
+
+There are no remaining Part 1 completion tasks in this reference.
